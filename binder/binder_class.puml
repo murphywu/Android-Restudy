@@ -1,0 +1,79 @@
+@startuml
+
+interface IBinder {
+  boolean transact(int code, Parcel data, Parcel reply, int flags)
+}
+
+note top of IBinder
+  表示一个remote object，应用不要直接实现这个接口，而是应该
+  继承Binder类
+end note
+
+note right of IBinder::transact
+  调用transact方法可以发起跨进程调用，这个方法会调用到底层的Binder驱动，
+  由binder驱动将参数转发给服务端Binder对象的onTransact()方法处理调用请求
+end note
+
+class Binder {
+  # boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+}
+
+note right of Binder::onTransact
+  Binder 的子类应该复写这个方法，以实现对事务的处理
+end note
+
+interface IInterface {
+  + IBinder asBinder();
+}
+
+note left of IInterface
+  表示一个可以转换成IBinder接口的接口，所有的Binder对象都需要实现这个接口
+end note
+
+interface IGradeInterface {
+  int getStudentGrade(String name) throws RemoteException
+}
+
+IInterface <|-- IGradeInterface
+
+class "IGradeInterface.Stub.Proxy" as Proxy{
+  - mRemote: IBinder
+  + Proxy(IBinder remote)
+}
+
+abstract class "IGradeInterface.Stub" as Stub {
+  {static} IGradeInterface asInterface(IBinder obj)
+}
+
+note left of Stub::asInterface
+  asInterface中如果本地没查到对应名字的IInterface，则会创建一个Proxy。
+  IGradeInterface asInterface(IBinder obj) {
+    // DESCRIPTOR = "com.sankuai.ng.business.common.testviewbinding.binder.IGradeInterface";
+    IInterface iin = obj.queryLocalInterface(DESCRIPTOR)
+    // 如果是进程内通信，则直接返回
+    if (iin instanceof IInterface) {
+          return ((IGradeInterface)iin);
+    }
+    // 跨进程通信需要通过Proxy代理
+    return new IGradeInterface.Stub.Proxy(obj);
+  }
+end note
+
+note left of Proxy
+  注意，Proxy并不是一个Binder对象，需要通过asBinder()方法返回真正的Binder对象
+end note
+
+note bottom of Proxy
+  实现IGradeInterface接口，getStudentGrade(name)的实现：将入参name写入Parcel，
+  调用mRemote.transact(Stub.TRANSACTION_getStudentGrade, _data, _reply, 0)
+  完成远程调用，结果通过_reply返回回来，如果_reply头部读到异常码，则会抛出异常
+end note
+
+IBinder <.. Binder
+Binder <|-- Stub
+IGradeInterface <|.. Stub
+IGradeInterface <|.. Proxy
+Proxy "1" o-right- "1" IBinder
+Proxy <.. Stub : 依赖
+
+@enduml

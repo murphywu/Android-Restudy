@@ -1,0 +1,312 @@
+@startmindmap
+<style>
+mindmapDiagram{
+  node {
+    BackgroundColor gold
+    MaximumWidth 500
+    RoundCorner 12
+  }
+}
+</style>
+
+* Android
+** 四大组件
+*** Activity [[https://blog.csdn.net/javazejian/article/details/51932554]]
+**** 生命周期
+***** 四种形态
+******_ Active/Running，活跃，处于栈顶，可见
+******_ Paused，失去焦点，比如被非全屏或透明Activity遮盖，失去了交互能力
+******_ Stoped，被完全覆盖，处于不可见
+******_ Killed，被系统回收掉
+***** 声明周期函数
+******_:
+onCreate()：初始化操作
+onStart()：已启动，但无法看见
+onResume()：可看见，适合初始化一些资源，注册一些事件
+onPause()：onPause执行完后，新Activity的生命周期方法才会执行
+onStop()：新Activity的onResume方法执行后，onStop才会调用，可在该方法做一些资源释放操作。如果新Activity有透明主题，则这个方法不会执行
+onRestart()：stop后重新进入Activity
+onDestory()
+;
+
+***** 异常生命周期
+****** 发生场景
+*******_ 1.系统配置发生变化
+********_ 避免配置变更引起的重建问题:configChange=“orientation|screenSize”，onConfigrationChange方法会被调用
+*******_ 2.系统低内存被杀死
+********_ 进程的5个层次
+*********_ 前台进程
+**********_:
+a. 处于前台正与用户交互的activity
+b. 与前台activity绑定的service
+c. 调用了startForeground()方法的service
+d. 正在执行onCreate(), onStart(), 或onDestroy()方法的service
+e. 正在执行onReceive()方法的BroadcastReceiver.
+;
+*********_ 可视进程
+**********_ 可见但位于后台，无法与用户交互。比如Activity在后台弹出了一个弹框
+*********_ 服务进程
+**********_ 通过startService启动了一个服务进程
+*********_ 后台进程
+**********_ 在前台通过Home键切到后台
+*********_ 空进程
+**********_ 空进程没有活跃的组件
+*******_:调用顺序:
+onPause()
+onSaveInstanceState(Bundle)：必须在onStop之前。只在异常终止时才会被调用
+onStop()
+onDestory()
+onCreate(Bundle)：可根据参数bundle!=null 判断是否是异常重建
+onStart()
+onRestoreInstanceState(Bundle)：只在异常终止时才会被调用
+onResume()
+;
+******_ 系统默认恢复的数据：视图结构、文本框数据、listview滚动位置
+
+
+
+
+
+**** 启动模式
+***** Standard
+******_ 标准模式，每次启动都会创建一个新的Activity实例
+***** SingleTop
+******_ 栈顶复用模式，如果有Activity已在Task栈顶，那么直接复用栈顶的实例，onNewIntent(Intent intent)会被调用，否则仍然会创建一个新实例
+***** SingleTask
+******_ 栈内复用模式，如果当前栈中存在要启动的Activity实例，则直接将该Activity置于栈顶，并将该Activity之上的Activity都移除掉。Activity的onNewIntent方法会被调用
+***** SingleInstance
+******_ 单例模式，整个应用中只有一个实例，且独享一个Task。
+***** 设置方法
+******_ 1.通过android:launchMode属性设置
+******_ 2.通过在Intent中设置标志位
+
+
+**** 任务栈
+*****_ 查看任务栈命令：adb shell dumpsys activity activities，打印的顺序实际是回退栈的顺序
+***** 特点
+******_ 栈结构，先进先出
+******_ 用于存放Activity，是一组Activity的集合
+******_ 一个App可存在多个Task，可通过singleTask结合设置taskAffinity的方式来指定Activity启动所在的栈
+******_ 一个Task中的Activity可来自不同的App
+***** 任务栈转移参数
+****** android:taskAffinity
+*******_ 标识任务栈名称，默认情况应用中Activity的taskAffinity为应用包名
+*******_ 仅对启动模式为SingleTask或allowTaskReparenting=true的Activity设置有效。
+*******_ 如何将自己Activity放到微信的回退栈中：launchMode=singleTask taskAffinity="com.tencent.mm"
+****** allowTaskReparenting
+*******_ 表示Activity可以从启动的Task移动到有相同affinity的task。
+*******_ 仅对single和singleTop模式启动的Activity有效。
+*******_ 典型应用场景：e-mail app中点击链接打开浏览器app加载网页，当e-mail退到后台，从luancher进入浏览器应用，网页会从e-mail的任务栈移动到浏览器app的任务栈
+
+***** Activity启动任务栈控制参数
+
+****** 属性参数
+******* android:clearTaskOnLaunch
+********_ 当应用在后台，从Launcher中重新进入应用（重新返回任务栈），设置有android:clearTaskOnLaunch的Activity会被优先保留，其他会从任务栈中移除
+******* android:finishOnTaskLaunch
+********_ 重新返回任务栈时，设置有该属性的Activity会被移除
+******* android:alwaysRetainTaskState
+********_ 设置有该属性的Activity，不会受任何清理命令的影响，相当于免死金牌
+
+****** Intent启动Flag
+******* FLAG_ACTIVITY_NEW_TASK
+********_ 相当于在清单中指定Activity启动模式为“singleTask”
+********_ 在Service中启动Activity必须使用该Flag，因为Service没有任务栈。否则会报AndroidRuntimeException
+******* FLAG_ACTIVITY_SINGLE_TOP
+********_ 相当于“singleTop”
+******* FLAG_ACTIVITY_CLEAR_TOP
+********_ 相当于“singleTask”
+******* FLAG_ACTIVITY_NO_HISTORY
+********_ 被这个flag启动的Activity，在启动其他Activity后，该Activity回被自动销毁
+******* FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+********_ 以这个方式启动的Activity不被添加到最近任务列表，等效于android:excludeFromRecents="true"
+
+*** Service
+*** Broadcast Receiver
+*** Content Provider
+*** Binder IPC
+**** Linux 其他IPC通信机制
+*****_ 为什么需要IPC：进程隔离，内存不共享
+***** 管道
+******_ 2次内存拷贝
+***** 消息队列
+******_ 2次内存拷贝
+***** 共享内存
+******_ 控制复杂，0次内存拷贝
+***** Socket
+******_ 2次内存拷贝，传输效率低，开销大，主要用于跨网络通信
+**** 特点
+***** 性能
+******_ 1次内存拷贝，性能仅次于共享内存
+******_ 传统的IPC机制，需要经历内存缓存区->内核缓存区->内存缓存区的2次内存拷贝过程
+******_ 一次Binder通信最大可传输的数据大小
+*******_ ProcessState初始化Binder
+********_ oneway：（1M - 8K）/ 2
+********_ 非oneway: (1M -8K)
+*******_ 手写mmap初始化Binder
+********_ oneway: 4M / 2
+********_ 非oneway: 4M
+***** 稳定性
+******_ C/S 架构，职责清晰，简单
+***** 安全
+******_ 为每个App分配UID，进程的UID是识别进程身份的重要标志
+**** 操作系统如何支持
+***** Binder驱动模块
+******_ 通过Linux动态内核可加载模块(LKM)机制实现，负责用户进程跨进程通信
+***** 内存映射
+******_ 将用户空间的一块内存区域映射到内核空间,对这一块内存的读写直接反应到内核和用户空间
+******_ 一般用在有物理介质的文件系统上，比如通过mmap()实现用户进程对磁盘的直接读写，而不经过内核空间的拷贝
+**** Binder IPC 通信核心原理
+*****_:
+1. Binder驱动在内核空间创建数据接收缓存区
+2. 在内核空间开辟一块内核缓存区，建立<b>内核缓存区</b>和<b>内核中数据接收缓存区</b>之间的映射关系，以及内核中<b>数据接收缓存区</b>和<b>接收进程用户空间地址</b>的映射关系
+3. 发送方进程通过系统调用 copy_from_user() 将数据 copy 到内核中的内核缓存区，由于内核缓存区和接收进程的用户空间存在内存映射，因此也就相当于把数据发送到了接收进程的用户空间，这样便完成了一次进程间的通信。
+;
+**** 实现原理
+*****_ 核心组件
+******_ 用户空间
+*******_ 通过open/mmap/ioctl访问设备文件/dev/binder，实现与Binder驱动通信
+******* ServiceManager
+********_ DNS，运行在后台的守护进程
+******* Client
+******* Server
+******_ 内核空间
+******* Binder驱动
+********_ 路由器
+********_ 保存了Binder对象的实例，但是并不是原始的Binder对象，而是Binder的代理对象。客户端对代理对象的调用，会转发给Binder驱动，Binder驱动再将方法的参数，转交的Server进程的Binder对象处理。
+***** 一次通信的过程
+******_:
+1. 首先，一个进程使用 BINDER_SET_CONTEXT_MGR 命令通过 Binder 驱动将自己注册成为 ServiceManager；
+2. Server 通过驱动向 ServiceManager 中注册 Binder（Server 中的 Binder 实体），表明可以对外提供服务。驱动为这个 Binder 创建位于内核中的实体节点以及 ServiceManager 对实体的引用，将名字以及新建的引用打包传给 ServiceManager，ServiceManger 将其填入查找表。
+3. Client 通过名字，在 Binder 驱动的帮助下从 ServiceManager 中获取到对 Binder 实体的引用，通过这个引用就能实现和 Server 进程的通信。
+;
+**** AIDL
+
+*****_ Android IPC通信接口描述语言
+***** IBinder
+******_ 实现了这个接口，代表具备跨进程通信能力
+***** IInterface
+******_ 描述Service对象具备什么能力，即在.aidl文件中定义的方法
+***** Binder
+******_ Java本地对象，实现了IBinder接口
+***** Stub
+******_ 静态内部类，继承Binder，实现IInterface接口
+***** Proxy
+******_ Client访问远程Binder对象的代理类
+***** oneway通信
+******_ 异步的，客户端进程不会挂起线程等待服务端返回结果
+******_ 对于同一个Binder node 节点的多次调用，binder驱动会串行处理，一个一个调用
+
+
+
+** Handler机制
+***_:
+1. 线程间通信
+2. 生产消费者模型
+3. 与RxJava背压策略、线程池拒绝策略不同，消息机制是无界缓冲
+4. 支持消息优先级管理
+;
+
+*** Handler
+**** 消息的<b>生产者</b>
+**** 通过构造函数，持有Looper及Lopper内部的MessgeQueue
+****_ 发送消息/处理：
+*****_ sendMessage(Message msg)，发送消息，内部将消息插入MessageQueue
+*****_ dispatchMessage(Message msg)，处理消息，处理消息的回调方法
+
+*** MessageQueue
+**** 消息缓冲队列
+****_ 消息的读取和插入
+*****_ enqueueMessage(Message msg, long when)
+******_ when>=当前时间
+******_ 消息的插入位置根据when决定，when越大越靠后
+*****_ next():Message
+******_ 内部for循环，从消息队列中取出一个可以执行的消息，如果当前没有消息要处理，会阻塞到有新消息可以执行
+*****_ 生产者插入消息，消费者取出消息
+
+*** Message
+**** 消息的信使
+**** 链表结构
+*****_:
+<code>
+class Message {
+  int arg1
+  int arg2
+  Object obj
+  Handler target
+  Runnable callback
+  Message next
+  }
+</code>
+;
+
+**** 同步屏障消息
+*****_ 特点：target=null，arg1=mNextBarrierToken++,唯一标记一个屏障消息
+*****_ 通过 int postSyncBarrier(long when)插入
+*****_ 由ViewRootImpl.scheduleTraversals()调用，不支持App调用
+*****_ 由ViewRootImpl.doTraversal()内部移除屏障消息
+**** 优先级
+*****_ 异步消息
+******_ setAsynchronous(boolean async)
+******_ 具备最高的执行优先级，如果队头是屏障消息，会被优先执行
+*****_ 普通消息
+*****_ IDleHandler
+******_:
+<code>
+interface IDleHandler{
+  //返回false，代表执行后从idleHandlers队列中移除，下次不会执行
+  boolean queueIle() 
+}
+</code>
+;
+******_ 当前消息队列中无可执行的消息时才会被调用
+******_ MessageQueue::addIdleHandler(IdleHandler handler)
+******_ MessageQueue::removeIdleHandler(IdleHandler handler)
+******_ 典型使用场景：Activity onStop()，onDestory()生命周期方法的调用（系统兜底机制：finish()之后，下一个Activity resume时，主动延迟10s主动调用上一个Activity的onStop/onDestory()）
+*****_ 延迟消息
+
+**** Message 对象池
+***** 实际是空闲的Message链表
+*****_ 避免内存抖动
+******_ 安卓系统运行有大量的消息
+***** static obtain():Message
+******_ 从对象池中获取一个消息
+***** recycle()
+******_ 回收消息，将消息放入对象池
+
+*** Looper
+**** 消息的<b>消费者</b>
+****_ 内部创建并持有MessageQueue
+****_ 一个线程只会有一个Lopper实例
+*****_ ThreadLocal保证，仅对当前线程可见
+**** static loop()方法
+*****_ 功能：调用messageQueue.next()方法取出消息，并将消息交给target对象的dispatchMessage方法处理
+*****_ 死循环，没有消息时会阻塞
+**** static prepare()方法
+*****_ 功能：创建Looper实例并放入ThreadLocal中
+**** static myLooper()方法
+*****_ 功能：从ThreadLocal中取出当前线程的Looper
+
+*** 应用场景
+****_ 卡顿监控：loop()方法消费事件前后会调用printer.println()方法打印日志，利用这一点可以监控消息耗时。Looper.getMainLooper().setMessageLogging(mainLooperPrinter)
+****_ try-catch主线程，防止App Crash
+*****_:
+<code>
+new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                for (;;) {
+                    try {
+                        Looper.loop()
+                    } catch (Throwable e) {
+                        if (mCrashHandler != null) {
+                    mCrashHandler.handlerException(Looper.getMainLooper().getThread(), e)
+                        }
+                    }
+                }
+            }
+        })
+</code>
+;
+
+@endmindmap
