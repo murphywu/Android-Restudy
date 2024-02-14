@@ -63,10 +63,6 @@ onResume()
 ;
 ******_ 系统默认恢复的数据：视图结构、文本框数据、listview滚动位置
 
-
-
-
-
 **** 启动模式
 ***** Standard
 ******_ 标准模式，每次启动都会创建一个新的Activity实例
@@ -79,7 +75,6 @@ onResume()
 ***** 设置方法
 ******_ 1.通过android:launchMode属性设置
 ******_ 2.通过在Intent中设置标志位
-
 
 **** 任务栈
 *****_ 查看任务栈命令：adb shell dumpsys activity activities，打印的顺序实际是回退栈的顺序
@@ -122,6 +117,96 @@ onResume()
 ********_ 以这个方式启动的Activity不被添加到最近任务列表，等效于android:excludeFromRecents="true"
 
 *** Service
+****_ 长时间在后台运行，没有用户界面的组件
+**** 运行模式
+***** 启动模式
+******_ 由startService()启动，可多次调用startService()
+******_ 调用stopService()或stopSelf()停止
+******_ 每次调用startService()，onStartCommand()方法将会被回调
+******_ 启动后可无限期运行，直到手动停止，适合长时间运行的后台服务
+***** 绑定模式
+******_ 由bindService()启动并与组件绑定，可被多个客户端绑定
+******_ unbindService()解除绑定，所有客户端解除绑定后，Service服务即可退出
+******_ 只有首次调用bindService()，onBind()方法才会被回调
+**** 启动方法
+***** Context::startService(Intent intent)
+******_:显示启动
+Intent intent = new Intent(this,ForegroundService.class)
+startService(intent)
+;
+******_:隐式启动
+final Intent serviceIntent=new Intent()
+serviceIntent.setAction("com.android.ForegroundService")
+startService(serviceIntent)
+;
+*******_ Android 5.0以上必须使用显示启动
+********_ 解决方案
+*********_: 方式1：给Intent同时设置package和action
+final Intent serviceIntent=new Intent()
+serviceIntent.setAction("com.android.ForegroundService")
+serviceIntent.setPackage(getPackageName())//设置应用的包名
+startService(serviceIntent)
+;
+*********_: 方式2：将隐式启动转换为显示启动
+PackageManager pm = context.getPackageManager()
+List<ResolveInfo> resolveInfo = pm.queryIntentServices(implicitIntent, 0)
+// 从resolveInfo中获取启动Service的className和packageName，详细的代码略
+;
+
+***** Context::bindService(Intent service, ServiceConnection connection, BindServiceFlags)
+******_ connection
+*******_ void onServiceConnected(ComponentName name, IBinder binder):，service绑定成功回调，绑定成功会收到Service在onBind方法中返回的Binder对象，通过这个对象可进行IPC通信
+*******_ void onServiceDisconnected(ComponentName name)：仅在与服务端意外终止时回调，客户端主动取消绑定不会回调。
+******_ flags:一些启动时的标志位
+*******_ 0: 当Service服务不存在时，不自动创建
+*******_ BIND_AUTO_CREATE，当Service服务不存在时，自动创建Service
+*******_ BIND_ABOVE_CLIENT，表示启动的Service比他绑定的客户端App进程存活优先级更高，系统会优先杀死绑定的客户端
+
+***** startForegroundService(Intent intent) 
+******_ Android 8.0引入。Android 8.0后，系统不允许后台应用创建后台服务。 因此，Android 8.0 引入了一种全新的方法，即 Context.startForegroundService()，以在前台启动新服务。
+******_ 系统创建服务后，应用必须在5秒内调用startForeground()启动前台服务，否则系统将停止服务并声明此应用ANR
+
+**** 将Service置为前台
+*****_ 前台服务必须为状态栏提供通知，例如音乐播放器的通知
+***** Service::startForeground(int id, Notification notification)
+******_ id不能为0
+******_ notification, 状态栏通知的描述配置信息
+***** Service::stopForeground(boolean removeNotification)
+******_ 将service移除前台状态，service并不会停止
+
+**** 停止Service
+*****_ Context::stopService(Intent intent)
+*****_ Service::stopSelf()
+
+**** 生命周期方法<img:service/service_lifecycle.png>
+*****_ onCreate()
+******_ 第一个被调用的方法
+*****_ int onStartCommand(Intent intent, int flagg, int startId)
+******_ 调用startService()这个方法才会被调用
+******_ 方法返回值
+*******_ <color:Green><b><size:20>START_STICKY</size></b></color>: 当Service因内存不足被系统kill后，一段时间后内存空闲，系统会重新创建Service，回调onStartCommand()方法，但其中Intent=null，除非有挂起的Intent，如pendingintent，这个状态下比较适用于不执行命令、但无限期运行并等待作业的媒体播放器或类似服务。
+*******_ <color:Green><b><size:20>START_NOT_STICKY</size></b></color>: 当Service因内存不足而被系统kill后，即使系统内存再次空闲时，系统也不会尝试重新创建此Service。除非程序中再次调用startService启动此Service，这是最安全的选项，可以避免在不必要时以及应用能够轻松重启所有未完成的作业时运行服务。
+*******_ <color:Green><b><size:20>START_REDELIVER_INTENT</size></b></color>:当Service因内存不足而被系统kill后，则会重建服务，并通过传递给服务的最后一个 Intent 调用 onStartCommand()，任何挂起 Intent均依次传递。与START_STICKY不同的是，其中的传递的Intent将是非空，是最后一次调用startService中的intent。这个值适用于主动执行应该立即恢复的作业（例如下载文件）的服务
+******_ intent: 通过startService传入的intent，客户端通过intent传递参数
+******_ flags
+*******_ 额外的启动参数，当系统恢复Service时，会根据onStartCommand()方法的返回值决定
+*******_ <color:Red><b><size:20>START_FLAG_REDELIVERY</size></b></color>:当方法返回值为START_REDELIVER_INTENT，Service被系统回收重建时会回传这个参数，此时Intent为回收前最后一次传递给服务的值
+*******_ <color:Red><b><size:20>START_FLAG_RETRY</size></b></color>:该flag代表当onStartCommand调用后一直没有返回值时，会尝试重新去调用onStartCommand()。
+******_ startId: 指明当前服务的唯一ID，与stopSelfResult (int startId)配合使用，stopSelfResult 可以更安全地根据ID停止服务。
+*****_ IBinder onBind(Intent intent)
+******_ 返回一个和Service通信的通道，可以返回null，表示不可被客户端绑定。
+******_ 另外一个组件通过bindService()方法与Service绑定，这个方法会被回调
+******_ boolean onUnbind(Intent intent)
+*******_ 当所有客户端解除绑定时，这个方法才会被回调。
+*******_ 默认返回false，返回true代表后面再有客户端调用bindService，onRebind(Intent intent)会被调用
+*****_ onDestory()
+******_ Service销毁退出时，回调的方法。此方法用于回收释放资源。
+
+**** Messenger
+*****_ 进程间通信最简单的方式，本质是利用了Handler的跨进程通信能力
+*****_ Messenger原理可看service_messenger.puml图描述
+
+
 *** Broadcast Receiver
 *** Content Provider
 *** Binder IPC

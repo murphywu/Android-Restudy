@@ -1,0 +1,74 @@
+@startuml
+
+interface Parcelable
+class Messenger {
+  Messenger(Handler target)
+  Messenger(IBinder target)
+  IBinder getBinder()
+}
+
+class Handler {
+  IMessenger getIMessenger()
+  void handleMessage(Message msg)
+}
+
+interface IMessenger {
+  void send(in Message msg)
+}
+
+abstract class IMessenger.Stub
+
+class MessengerImpl
+
+interface IBinder
+
+abstract class Binder
+
+abstract class Service{
+  IBinder onBind(Intent intent)
+}
+
+interface ServiceConnection {
+  void onServiceConnected(ComponentName name, IBinder service)
+  void onServiceDisconnected(ComponentName name);
+}
+
+class ServiceConnectionImpl
+
+class Server {
+  handler: Handler
+  messenger: Messenger
+  {static} SAY_HELLO
+  IBinder onBind(Intent intent)
+}
+
+class Client {
+  callServiceMessenger: Messenger
+  replyServiceMessenger: Messenger
+  void sayHello()
+}
+
+class Message {
+  data: Bundle
+  replyTo: Messenger
+}
+
+Parcelable <|.. Messenger: 实现了Parcelable接口，\n因此Messenger可以跨进程传递
+Parcelable <|.. Message
+IBinder <|.. Binder
+Binder <|-- IMessenger.Stub
+IMessenger <|.. IMessenger.Stub
+IMessenger.Stub <|-- MessengerImpl: MessengerImpl是Handler\n的内部类，本质是一个Binder
+MessengerImpl <.right. Handler
+Messenger ..> Handler: Messenger依赖Handler，\n通过Handler内部的mMessenger发送消息
+ServiceConnection <|.. ServiceConnectionImpl
+ServiceConnectionImpl <.. Client: 在onServiceConnected方法中，\n通过服务端回传的Binder构造callServiceMessanger，\n用于向服务端发送消息
+Client ..> Handler: 客户端用Handler构造replyServiceMessenger，用于接收服务端回传的数据。\n客户端在发送Message时，将replyServiceMessenger赋值给message.replyTo，\n服务端在处理完消息后，再用消息的replyTo.send消息给客户端
+Service <|-- Server
+Messenger <.. Server: Server在onBind方法中，\n调用了Messenger.getBinder方法，\n返回Handler内部的mMessenger
+Server ..> Handler: 服务端的Handler用于处理客户端的请求，\n之所以这个handler能收到客户端发送的消息，\n是因为在onBind()方法中，将Handler内部的mMessager返回给了客户端。
+
+
+
+
+@enduml
