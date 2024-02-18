@@ -96,8 +96,8 @@ ClientLifecycleManager -> ApplicationThread: scheduleTransaction(ClientTransacti
 ApplicationThread -> ActivityThread: scheduleTransaction
 ActivityThread -> ActivityThread: excuete()执行事务
 ActivityThread -> ActivityThread: cyclerToPath()，将事务请求映射到对应的生命周期状态
-ActivityThread -> handlerLaunchActivity(),
-ActivityThread -> performLaunchActivity(), 
+ActivityThread -> ActivityThread: handlerLaunchActivity(),
+ActivityThread -> ActivityThread: performLaunchActivity(), 
 ActivityThread -> ActivityThread: createBaseContextForActivity(ActivityClientRecord r): 为Activity创建Context
 ActivityThread -> Instrumentation: newActivity(className, intent), 创建Activity实例
 Instrumentation -> ActivityThread: 返回activity实例
