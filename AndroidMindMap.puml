@@ -86,7 +86,7 @@ onResume()
 ***** 任务栈转移参数
 ****** android:taskAffinity
 *******_ 标识任务栈名称，默认情况应用中Activity的taskAffinity为应用包名
-*******_ 仅对启动模式为SingleTask或allowTaskReparenting=true的Activity设置有效。
+*******_ 仅对启动模式为SingleTask或allowTaskReparenting=true,或者启动时添加了FLAG_ACTIVITY_NEW_TASK标志的场景有效。
 *******_ 如何将自己Activity放到微信的回退栈中：launchMode=singleTask taskAffinity="com.tencent.mm"
 ****** allowTaskReparenting
 *******_ 表示Activity可以从启动的Task移动到有相同affinity的task。
@@ -105,7 +105,7 @@ onResume()
 
 ****** Intent启动Flag
 ******* FLAG_ACTIVITY_NEW_TASK
-********_ 相当于在清单中指定Activity启动模式为“singleTask”
+********_ 如果当前应用中存在与启动Activity相同taskAffinity的任务栈，则复用当前这个任务栈，如果不存在，则新创建一个任务栈
 ********_ 在Service中启动Activity必须使用该Flag，因为Service没有任务栈。否则会报AndroidRuntimeException
 ******* FLAG_ACTIVITY_SINGLE_TOP
 ********_ 相当于“singleTop”
@@ -115,6 +115,8 @@ onResume()
 ********_ 被这个flag启动的Activity，在启动其他Activity后，该Activity回被自动销毁
 ******* FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
 ********_ 以这个方式启动的Activity不被添加到最近任务列表，等效于android:excludeFromRecents="true"
+**** 启动过程
+***** 参考：[[https://blog.csdn.net/allen_xu_2012_new/article/details/131167564]]
 
 *** Service
 ****_ 长时间在后台运行，没有用户界面的组件
