@@ -1,0 +1,110 @@
+@startuml
+
+Actor user
+participant Launcher
+participant ClickItemHandler
+participant ActivityContext
+participant ActivityOptionsWrapper
+participant Intent
+participant Activity
+participant Instrumentation
+participant ActivityTaskManagerService as ATMS
+user -> Launcher : 用户点击Launcher应用图标
+Launcher -> ClickItemHandler: onClick(v)点击事件被回调
+ClickItemHandler -> ClickItemHandler : startAppShortcutOrInfoActivity(View, ItemInfo, Launcher)
+ClickItemHandler -> Launcher : startActivitySafely(View, Intent, ItemInfo) -> RunnalbeList
+Launcher -> ActivityContext++: startActivitySafely(View, Intent, ItemInfo) -> RunableList
+opt 是安全模式，且不是系统应用
+  [<- ActivityContext
+end
+ActivityContext -> ActivityContext++: getActivityLaunchOptions(View, ItemInfo) -> ActivityOptionsWrapper
+note right ActivityContext
+根据启动图标在屏幕上的位置，
+以及ItemInfo中关于应用的信息，
+包装在ActivityOptionsWrapper返回
+end note
+ActivityContext -> ActivityOptionsWrapper++ : toBundle()-> Bundle，\n将启动参数转成可序列化传输\n的bundle：optsBundle
+ActivityOptionsWrapper -> ActivityContext: optsBundle
+ActivityContext -> Intent: addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)，添加FLAG_ACTIVITY_NEW_TASK启动参数
+ActivityContext -> Activity++ : startActivity(Intent, Bundle),\n调用到基类Activity的startActivity方法，\n传递启动的Intent和Bundle信息，\nIntent有目标应用信息，Bundle\n中有关于Launcher启动时的信息
+Activity -> Activity: startActivityForResult(Intent intent, int request, Bundle options)
+Activity -> Instrumentation ++: execStartActivity(\nContext who,\n IBinder contextThread,\n IBinder token,\n Activity target, \nIntent intent, intent request, Bundle option)
+note right Instrumentation
+  context：调用startActivity的组件，这里是Launcher
+  contextThread: 这里是mMainThread.getApplicationThread(),
+   即Launcher进程的ActivityThread::applicationThread
+  token: 这里是Launcher的窗口token
+  target : 这里是Launcher
+end note
+Instrumentation -> ATMS++: startActivity(IApplicationThread caller, ...很多其他参数),\n这一步是通过ServiceManager的帮助，\n通过Binder与ATMS进行通信
+ATMS -> ATMS ++: startActivityAsUser(...)
+ATMS -> ATMS ++: getActivityStartController() -> ActivityStartController
+ATMS -> ActivityStartController++ : obtainStarter(Intent, String reason)
+ActivityStartController -> ATMS: ActivityStarter
+ATMS -> ActivityStarter++: -> 设置一些启动的参数，并最终调用excute()
+ActivityStarter -> ActivityStarter++: excuteRequest(Request request)
+ActivityStarter -> ActivityRecord.Builder: 构造启动Activity的ActivityRecord
+ActivityStarter <- ActivityRecord.Builder: 返回ActivityRecord
+ActivityStarter -> ActivityStarter++: startActivityUnchecked(ActivityRecord, ...)
+ActivityStarter -> ActivityStarter++: startActivityInner(ActivityRecord, ...)
+note right ActivityStarter
+startActivityInner内部，会去寻找一个合适的Task，用于存放ActivityRecord
+如果当前没有，则会创建一个Task。
+找到的Task成为targetTask，系统此时会将task移动到前台。
+
+end note
+ActivityStarter -> RootWindowContainer++: getOrCreateRootTask
+RootWindowContainer -> Task: fromWindowContainerToken()，尝试找一个Task复用
+RootWindowContainer <- Task: 返回candicateTask
+alt candicateTask != null
+RootWindowContainer -> ActivityStarter: 返回Task
+else 
+RootWindowContainer -> Task.Builder : build
+RootWindowContainer <- Task.Builder: 返回新的Task
+ActivityStarter <- RootWindowContainer: 返回新的Task
+end
+ActivityStarter -> RootWindowContainer: resumeFocusedTasksTopActivities\n(Task task,\n ActivityRecord record, \nActivityOptions options)
+RootWindowContainer -> ActivityTaskSupervisor: startSpecificActivity(ActivityRecord,boolean andResume, boolean checkConfig)
+ActivityTaskSupervisor -> ATMS: startProcessAsync(ActivityRecord r, ...)
+ATMS -> AMS : startProcess
+AMS -> ProcessList : startProcessLocked-> ProcessRecord
+ProcessList -> Zygote++: fork新进程，并调用ActivityThread.main方法
+Zygote -> ActivityThread: main()
+ActivityThread -> ActivityThread: initializeMainlineModules(),注册各种硬件服务，比如蓝牙、nfc、媒体等等
+ActivityThread -> Looper: prepareMainLooper()，创建主线程Looper
+ActivityThread -> ActivityThread: new(), 创建真正的activityThread对象
+ActivityThread -> ActivityThread ++: attach()
+ActivityThread -> ActivityManagerService : attachApplication(IApplicationThread appThread, int pid, ...),\n至此，AMS和ApplicationThread建立了连接
+ActivityManagerService -> ApplicationThread: bindApplication(),binder跨进程调用
+ApplicationThread -> Instrumentation: new()
+ApplicationThread -> LoadedApk++: makeApplicationInner(boolean forceDefaulAppClass, Instrumentation) -> Application
+note right: 这一步创建Application实例
+LoadedApk -> Instrumentation++: newApplication()
+Instrumentation -> LoadedApk++: 应用的Application实力
+LoadedApk -> Instrumentation++: callApplicationOnCreate,Application的onCreate被调用
+ApplicationThread <- LoadedApk: application
+ActivityManagerService -> ActivityManagerService: finishAttachApplicationInner
+ActivityManagerService -> ATMS: attachApplication(WindowProcessController wpc)
+ATMS -> RootWindowContainer: attachApplication(WindowProcessController wpc)
+RootWindowContainer -> ActivityTaskSupervisor: realStartActivityLocked()，这里会启动主页面
+ActivityTaskSupervisor -> ClientTransaction : 通过事务，执行Activity创建、执行到resume的生命周期
+ClientTransaction -> ClientTransactionItem: 依次构造LaunchActivityItem\PauseActivityItem\ResumeActivityItem等等事务
+ActivityTaskSupervisor -> ATMS: getLifecycleManager()
+ATMS -> ActivityTaskSupervisor: 返回ClientLifecycleManager
+ActivityTaskSupervisor -> ClientLifecycleManager: scheduleTransaction（）,调度事务
+ClientLifecycleManager -> ApplicationThread: scheduleTransaction(ClientTransaction)，
+ApplicationThread -> ActivityThread: scheduleTransaction
+ActivityThread -> ActivityThread: excuete()执行事务
+ActivityThread -> ActivityThread: cyclerToPath()，将事务请求映射到对应的生命周期状态
+ActivityThread -> handlerLaunchActivity(),
+ActivityThread -> performLaunchActivity(), 
+ActivityThread -> ActivityThread: createBaseContextForActivity(ActivityClientRecord r): 为Activity创建Context
+ActivityThread -> Instrumentation: newActivity(className, intent), 创建Activity实例
+Instrumentation -> ActivityThread: 返回activity实例
+ActivityThread -> Activity: attach(Context, ...),给Activity注入context,ActivityThread, token，等很多东西，并且创建Activity的mWindow, 即PhoneWindow
+ActivityThread -> Activity: setTheme()，给Activity设置主题
+ActivityThread -> ActivityClientRecord: r.activity = activity
+ActivityThread -> Instrumentation : callActivityOnCreate(Activity activity, Bundle state), 将r中保存的savedState传入
+Instrumentation -> Activity: performCreate(Bundle icicle, persistenState)， persistenState可以不关注，这个只有在设备重启恢复模式才会有用
+Activity -> Activity: onCreate(Bundle state)被调用
+@enduml

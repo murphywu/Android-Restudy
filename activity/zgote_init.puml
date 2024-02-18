@@ -1,0 +1,62 @@
+@startuml
+participant init进程 as init
+participant ZygoteInit
+participant ZygoteServer
+participant Zygote
+
+init -> ZygoteInit ++ : main()
+note left 
+这里会带很多参数，比如start-system-server
+、zygote socket的名字等等
+end note
+ZygoteInit -> ZygoteServer ++ : new(isPrimaryZygote)
+ZygoteServer -> Zygote : createManagedSocketFromInitSocket
+note over Zygote
+创建并绑定到名为“ANDROID_SOCKET_zygote”的
+LocalSocket,并开始listen socket连接
+end note
+ZygoteInit <- ZygoteServer --: 返回zygoteServer实例
+
+opt startSystemServer
+  ZygoteInit -> ZygoteInit++: forkSystemServer,创建system_server进程
+  ZygoteInit -> Zygote: forkSystemServer
+  Zygote -> Zygote.cpp ++: com_android_internal_os_Zygote_nativeForkSystemServer
+  Zygote.cpp -> Zygote.cpp ++: SpecializeCommon
+  note right: 设置进程名字、当前线程名字 
+  Zygote.cpp -> Zygote ++: callPostForkSystemServerHooks
+  Zygote -> Runtime.cpp: SetAsSystemServer,向系统声明当前进程为system_server
+  Zygote.cpp -> Zygote: callPostForkChildHooks
+  Zygote -> Runtime.cpp-- : SetAsZygoteChild，设置进程为Zygote的子进程
+  ZygoteInit -> ZygoteInit++: handleSystemServerProcess()
+  ZygoteInit -> ZygoteInit++ : zygoteInit()->Runnable
+  note right:这个方法将对ActivityThread::main的调用封装到Runnable返回，供ZygoteInit调用
+  ZygoteInit -> ActivityThread : main()
+  note right ZygoteInit
+  1、重定向system.out\system.err到Android的Print流
+  2、注册线程Crash Handler，crash时打印FATAL_EXCEPTION
+  3、启动Binder线程
+  4、调用应用进程ActivityThread.main()方法
+  end note
+end
+
+ZygoteInit -> ZygoteServer: runSelectLoop
+note over ZygoteServer
+  这里使用了Socket的多路复用，
+  监听来自system_server进程来连接请求
+end note
+ZygoteServer -> OS: poll(pollFds)
+ZygoteServer <- OS: pollReturnValue,system_server端的fd
+ZygoteServer -> ZygoteConnection++: processCommand()
+note over ZygoteConnection
+读取system_server端写入的数据，并将数据传给Zygote fork进程
+end note
+ZygoteConnection -> Zygote++: forkAndSpecialize
+note over Zygote
+创建应用进程，并为进程设置名字，
+过程与创建system_server进程基本一致。
+最终会调用到ActivityThread::main()
+end note
+
+Zygote -> ActivityThread: main()
+
+@enduml
